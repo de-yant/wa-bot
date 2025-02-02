@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot QR Code</title>
+</head>
+<body>
+    <h1>Scan QR Code untuk WhatsApp Bot</h1>
+    <img id="qrcode" src="" alt="QR Code">
+    <script>
+        async function fetchQR() {
+            const response = await fetch("/qr");
+            const qrCodeData = await response.text();
+            document.getElementById("qrcode").src = qrCodeData;
+        }
+        fetchQR();
+        setInterval(fetchQR, 5000);
+    </script>
+</body>
+</html>
