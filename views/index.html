@@ -1,21 +1,23 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Bot QR Code</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan QR Code WhatsApp</title>
 </head>
 <body>
-    <h1>Scan QR Code untuk WhatsApp Bot</h1>
-    <img id="qrcode" src="" alt="QR Code">
-    <script>
-        async function fetchQR() {
-            const response = await fetch("/qr");
-            const qrCodeData = await response.text();
-            document.getElementById("qrcode").src = qrCodeData;
-        }
-        fetchQR();
-        setInterval(fetchQR, 5000);
-    </script>
+  <h1>Scan QR Code untuk Menghubungkan Bot</h1>
+  <img id="qrCode" src="" alt="QR Code akan muncul di sini">
+  
+  <script>
+    async function fetchQR() {
+      const response = await fetch("/qr");
+      const data = await response.json();
+      if (data.qr) {
+        document.getElementById("qrCode").src = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(data.qr);
+      }
+    }
+    setInterval(fetchQR, 5000); // Cek QR setiap 5 detik
+  </script>
 </body>
 </html>

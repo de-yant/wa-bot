@@ -1,25 +1,27 @@
 const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useSingleFileAuthState } = require("@whiskeysockets/baileys"); // Ganti dengan Single File Auth
+const { useSingleFileAuthState } = require("@whiskeysockets/baileys");
 const axios = require("axios");
 const qrcode = require("qrcode-terminal");
 
 require("dotenv").config();
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-const DEFAULT_AI_MODEL = "openai/gpt-3.5-turbo"; // Model AI default
+const DEFAULT_AI_MODEL = "openai/gpt-3.5-turbo";
+
+let qrCodeData = ""; // Simpan QR sementara
 
 // Fungsi utama untuk memulai bot WhatsApp
 async function startBot() {
   try {
-    // Gunakan penyimpanan kredensial dalam satu file JSON
     const { state, saveState } = await useSingleFileAuthState("auth.json");
     const conn = makeWASocket({ auth: state });
 
     conn.ev.on("creds.update", saveState);
-    
-    // Menampilkan QR Code di terminal
+
+    // Menampilkan QR Code di terminal & menyimpan untuk frontend
     conn.ev.on("connection.update", (update) => {
       if (update.qr) {
+        qrCodeData = update.qr;
         console.log("📌 Scan QR Code di bawah ini:");
         qrcode.generate(update.qr, { small: true });
       }
@@ -79,9 +81,15 @@ async function fetchOpenRouter(model, query) {
   }
 }
 
+// Jalankan bot
 startBot();
 
-// Vercel Serverless Function Handler
+// **API untuk mengambil QR Code**
 module.exports = async (req, res) => {
-  res.status(200).json({ message: "Bot is running." });
+  if (req.url === "/qr") {
+    res.setHeader("Content-Type", "application/json");
+    res.status(200).json({ qr: qrCodeData });
+  } else {
+    res.status(200).json({ message: "Bot is running." });
+  }
 };
