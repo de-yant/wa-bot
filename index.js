@@ -1,98 +1,87 @@
-const express = require("express");
 const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useMultiFileAuthState } = require("@whiskeysockets/baileys");
-const qrcode = require("qrcode");
+const { useSingleFileAuthState } = require("@whiskeysockets/baileys"); // Ganti dengan Single File Auth
 const axios = require("axios");
-const fs = require("fs");
+const qrcode = require("qrcode-terminal");
+
 require("dotenv").config();
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const DEFAULT_AI_MODEL = "openai/gpt-3.5-turbo"; // Model AI default
 
-let qrCodeUrl = "";
-
-// Fungsi untuk memulai bot
+// Fungsi utama untuk memulai bot WhatsApp
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth");
+  try {
+    // Gunakan penyimpanan kredensial dalam satu file JSON
+    const { state, saveState } = await useSingleFileAuthState("auth.json");
+    const conn = makeWASocket({ auth: state });
 
-  const conn = makeWASocket({
-    auth: state,
-    printQRInTerminal: true
-  });
+    conn.ev.on("creds.update", saveState);
+    
+    // Menampilkan QR Code di terminal
+    conn.ev.on("connection.update", (update) => {
+      if (update.qr) {
+        console.log("📌 Scan QR Code di bawah ini:");
+        qrcode.generate(update.qr, { small: true });
+      }
+      if (update.connection === "open") console.log("✅ Bot WhatsApp siap digunakan!");
+      if (update.connection === "close") console.log("❌ Koneksi terputus.");
+    });
 
-  conn.ev.on("creds.update", saveCreds);
+    conn.ev.on("messages.upsert", async (message) => {
+      try {
+        if (!message.messages || message.type !== "notify") return;
+        const msg = message.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-  conn.ev.on("connection.update", async (update) => {
-    if (update.qr) {
-      console.log("🔄 Generating QR Code...");
-      qrCodeUrl = await qrcode.toDataURL(update.qr);
-      fs.writeFileSync("public/qr.txt", qrCodeUrl);
-    }
+        const sender = msg.key.remoteJid;
+        const userMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (!userMessage) return;
 
-    if (update.connection === "close") {
-      console.log("❌ Connection closed, retrying...");
-      startBot();
-    } else if (update.connection === "open") {
-      console.log("✅ Bot is online!");
-    }
-  });
+        console.log(`📩 Pesan dari ${sender}: ${userMessage}`);
 
-  conn.ev.on("messages.upsert", async (message) => {
-    if (!message.messages || message.type !== "notify") return;
-    const msg = message.messages[0];
+        // Kirim pertanyaan ke AI
+        const botReply = await fetchOpenRouter(DEFAULT_AI_MODEL, userMessage);
+        await conn.sendMessage(sender, { text: botReply });
 
-    if (!msg.message || msg.key.fromMe) return;
+      } catch (error) {
+        console.error("❌ Error ChatBot:", error.message);
+        await conn.sendMessage(message.messages[0].key.remoteJid, { text: "Maaf, terjadi kesalahan." });
+      }
+    });
 
-    const sender = msg.key.remoteJid;
-    const userMessage = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
-    if (!userMessage) return;
-
-    console.log(`📩 Message from ${sender}: ${userMessage}`);
-
-    // Dapatkan balasan dari OpenRouter API
-    const botReply = await fetchOpenRouter(userMessage);
-    await conn.sendMessage(sender, { text: botReply });
-  });
+  } catch (err) {
+    console.error("❌ Gagal memulai bot:", err);
+  }
 }
 
-// Fungsi untuk mengambil balasan dari OpenRouter
-async function fetchOpenRouter(query) {
+// Fungsi untuk mendapatkan respon dari OpenRouter
+async function fetchOpenRouter(model, query) {
   try {
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-3.5-turbo",
+        model: model,
         messages: [{ role: "user", content: query }],
         max_tokens: 200
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
           "Content-Type": "application/json"
         }
       }
     );
 
-    return response.data.choices?.[0]?.message?.content || "Maaf, saya tidak dapat menjawab.";
+    return response.data.choices?.[0]?.message?.content || "Tidak ada balasan.";
   } catch (error) {
-    console.error("❌ OpenRouter API Error:", error.response?.data || error.message);
+    console.error("❌ Error OpenRouter:", error.response?.data || error.message);
     return "Terjadi kesalahan saat menghubungi AI.";
   }
 }
 
-// **API Endpoint untuk Menampilkan QR**
-app.get("/qr", (req, res) => {
-  res.sendFile(__dirname + "/public/qr.txt");
-});
-
-// **API Endpoint untuk Mengecek Status**
-app.get("/", (req, res) => {
-  res.send("✅ Bot WhatsApp is running!");
-});
-
-// Mulai server Express
-app.listen(PORT, () => console.log(`🚀 Server berjalan di http://localhost:${PORT}`));
-
-// Jalankan bot
 startBot();
+
+// Vercel Serverless Function Handler
+module.exports = async (req, res) => {
+  res.status(200).json({ message: "Bot is running." });
+};
